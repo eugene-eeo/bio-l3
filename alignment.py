@@ -162,7 +162,12 @@ def find_local_max(alphabet, scores, s, t):
         )
 
     for i in range(1, m):
-        V[1][0] = V[0][0] + S(s[i-1], None)
+        V[1][0] = max(V[0][0] + S(s[i-1], None), 0)
+        best_score, best_entry = max(
+            (best_score, best_entry),
+            (V[1][0], (i, 0)),
+        )
+
         for j in range(1, n):
             V[1][j] = max(
                 V[0][j-1] + S(s[i-1], t[j-1]),
