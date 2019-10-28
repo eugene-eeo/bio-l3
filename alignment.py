@@ -99,34 +99,38 @@ def nw_align(alphabet, scores, s, t):
     b = float('-inf')
     if len(s) == 1:
         # Try to align ---s--- with t
-        Z = ""
-        W = t
+        Z = []
+        W = list(range(len(t)))
         for i in range(len(t)):
             u = S(s, t[i]) + sum(S(None, t[j]) for j in range(len(t)) if j != i)
             if u > b:
                 b = u
-                Z = ("-" * i) + s + ("-" * (len(t) - i - 1))
+                Z = [-1] * i + [0] + [-1] * (len(t) - i - 1)
     else:
         # Try to align s with --t--
-        Z = s
-        W = ""
+        Z = list(range(len(s)))
+        W = []
         for i in range(len(s)):
             u = S(s[i], t) + sum(S(s[j], None) for j in range(len(s)) if j != i)
             if u > b:
                 b = u
-                W = ("-" * i) + t + ("-" * (len(s) - i - 1))
+                W = [-1] * i + [0] + [-1] * (len(s) - i - 1)
     return Z, W
 
 
+def i_add(Z, i):
+    return [(z if z == -1 else z+i) for z in Z]
+
+
 def global_align(alphabet, scores, X, Y):
-    Z = ""
-    W = ""
+    Z = []
+    W = []
     if len(X) == 0:
-        Z = "-" * len(Y)
-        W = Y
+        Z = [-1] * len(Y)
+        W = list(range(len(Y)))
     elif len(Y) == 0:
-        Z = X
-        W = "-" * len(X)
+        Z = list(range(len(X)))
+        W = [-1] * len(X)
     elif len(X) == 1 or len(Y) == 1:
         Z, W = nw_align(alphabet, scores, X, Y)
     else:
@@ -142,8 +146,8 @@ def global_align(alphabet, scores, X, Y):
                 max_score = a + b
         Z1, W1 = global_align(alphabet, scores, X[:xmid], Y[:ymid])
         Z2, W2 = global_align(alphabet, scores, X[xmid:], Y[ymid:])
-        Z = Z1 + Z2
-        W = W1 + W2
+        Z = Z1 + i_add(Z2, xmid)
+        W = W1 + i_add(W2, ymid)
     return Z, W
 
 
@@ -185,4 +189,5 @@ def find_local_max(alphabet, scores, s, t):
 def local_align(alphabet, scores, s, t):
     ei, ej = find_local_max(alphabet, scores, s, t)
     si, sj = find_local_max(alphabet, scores, s[:ei][::-1], t[:ej][::-1])
-    return global_align(alphabet, scores, s[ei-si:ei], t[ej-sj:ej])
+    Z, W = global_align(alphabet, scores, s[ei-si:ei], t[ej-sj:ej])
+    return i_add(Z, ei-si), i_add(W, ej-sj)
