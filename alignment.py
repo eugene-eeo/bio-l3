@@ -91,35 +91,31 @@ def score_prefix_alignment(alphabet, scores, s, t):
             )
         for i in range(n):
             V[0][i] = V[1][i]
-    return V[1]
+    return V[0]
 
 
 def nw_align(alphabet, scores, s, t):
     S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+    b = float('-inf')
     if len(s) == 1:
         # Try to align ---s--- with t
         Z = ""
         W = t
-        b = float('-inf')
         for i in range(len(t)):
-            x = ("-" * i) + s + ("-" * (len(t) - i - 1))
             u = S(s, t[i]) + sum(S(None, t[j]) for j in range(len(t)) if j != i)
             if u > b:
                 b = u
-                Z = x
-        return Z, W
+                Z = ("-" * i) + s + ("-" * (len(t) - i - 1))
     else:
         # Try to align s with --t--
         Z = s
         W = ""
-        b = float('-inf')
         for i in range(len(s)):
-            x = ("-" * i) + t + ("-" * (len(s) - i - 1))
             u = S(s[i], t) + sum(S(s[j], None) for j in range(len(s)) if j != i)
             if u > b:
                 b = u
-                W = x
-        return Z, W
+                W = ("-" * i) + t + ("-" * (len(s) - i - 1))
+    return Z, W
 
 
 def global_align(alphabet, scores, X, Y):
@@ -138,7 +134,12 @@ def global_align(alphabet, scores, X, Y):
         xmid = xlen // 2
         score_l = score_prefix_alignment(alphabet, scores, X[:xmid], Y)
         score_r = score_prefix_alignment(alphabet, scores, X[xmid:][::-1], Y[::-1])[::-1]
-        ymid = max(range(len(Y)), key=lambda i: score_l[i] + score_r[i])
+        max_score = float('-inf')
+        ymid = 0
+        for i, (a, b) in enumerate(zip(score_l, score_r)):
+            if a + b > max_score:
+                ymid = i
+                max_score = a + b
         Z1, W1 = global_align(alphabet, scores, X[:xmid], Y[:ymid])
         Z2, W2 = global_align(alphabet, scores, X[xmid:], Y[ymid:])
         Z = Z1 + Z2
@@ -156,17 +157,15 @@ def find_local_max(alphabet, scores, s, t):
 
     for j in range(1, n):
         V[0][j] = max(V[0][j-1] + S(None, t[j-1]), 0)
-        best_score, best_entry = max(
-            (best_score, best_entry),
-            (V[0][j], (0, j)),
-        )
+        if V[0][j] > best_score:
+            best_score = V[0][j]
+            best_entry = (0, j)
 
     for i in range(1, m):
         V[1][0] = max(V[0][0] + S(s[i-1], None), 0)
-        best_score, best_entry = max(
-            (best_score, best_entry),
-            (V[1][0], (i, 0)),
-        )
+        if V[1][0] > best_score:
+            best_score = V[1][0]
+            best_entry = (i, 0)
 
         for j in range(1, n):
             V[1][j] = max(
@@ -175,10 +174,9 @@ def find_local_max(alphabet, scores, s, t):
                 V[1][j-1] + S(None, t[j-1]),
                 0,
             )
-            best_score, best_entry = max(
-                (best_score, best_entry),
-                (V[1][j], (i, j)),
-            )
+            if V[1][j] > best_score:
+                best_score = V[1][j]
+                best_entry = (i, j)
         for i in range(n):
             V[0][i] = V[1][i]
     return best_entry
