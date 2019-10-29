@@ -1,3 +1,6 @@
+from collections import defaultdict
+
+
 def score(a, b, alphabet, matrix):
     i = alphabet.index(a) if a is not None else -1
     j = alphabet.index(b) if b is not None else -1
@@ -47,8 +50,9 @@ def basic_align(alphabet, scores, s, t):
     s_idxs = []
     t_idxs = []
     i, j = find_max_score(V)
+    bscore = V[i][j]
 
-    while i != 0 and j != 0:
+    while i != 0 or j != 0:
         c = M[i][j]
         if c == 'D':
             i -= 1
@@ -69,7 +73,10 @@ def basic_align(alphabet, scores, s, t):
     s_idxs.reverse()
     t_idxs.reverse()
 
-    return V[i][j], s_idxs, t_idxs
+    return bscore, s_idxs, t_idxs
+
+
+# Linear space dynamic programming method
 
 
 def score_prefix_alignment(alphabet, scores, s, t):
@@ -97,24 +104,17 @@ def score_prefix_alignment(alphabet, scores, s, t):
 def nw_align(alphabet, scores, s, t):
     S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
     b = float('-inf')
-    if len(s) == 1:
-        # Try to align ---s--- with t
-        Z = []
-        W = list(range(len(t)))
-        for i in range(len(t)):
-            u = S(s, t[i]) + sum(S(None, t[j]) for j in range(len(t)) if j != i)
-            if u > b:
-                b = u
-                Z = [-1] * i + [0] + [-1] * (len(t) - i - 1)
-    else:
-        # Try to align s with --t--
-        Z = list(range(len(s)))
-        W = []
-        for i in range(len(s)):
-            u = S(s[i], t) + sum(S(s[j], None) for j in range(len(s)) if j != i)
-            if u > b:
-                b = u
-                W = [-1] * i + [0] + [-1] * (len(s) - i - 1)
+    if len(t) == 1 and len(s) > 1:
+        W, Z = nw_align(alphabet, scores, t, s)
+        return Z, W
+    # Try to align ---s--- with t
+    Z = []
+    W = list(range(len(t)))
+    for i in range(len(t)):
+        u = S(s, t[i]) + sum(S(None, t[j]) for j in range(len(t)) if j != i)
+        if u > b:
+            b = u
+            Z = [-1] * i + [0] + [-1] * (len(t) - i - 1)
     return Z, W
 
 
@@ -186,8 +186,149 @@ def find_local_max(alphabet, scores, s, t):
     return best_entry
 
 
+def score_indexes(alphabet, scores, s, t, Z, W):
+    total = 0
+    for i, j in zip(Z, W):
+        a = s[i] if i != -1 else None
+        b = t[j] if j != -1 else None
+        total += score(a, b, alphabet, scores)
+    return total
+
+
 def local_align(alphabet, scores, s, t):
     ei, ej = find_local_max(alphabet, scores, s, t)
     si, sj = find_local_max(alphabet, scores, s[:ei][::-1], t[:ej][::-1])
+    # If one of the substrings is empty, then just
+    # give up now.
+    if ei - si == ei or ej - sj == ej:
+        return 0, [], []
     Z, W = global_align(alphabet, scores, s[ei-si:ei], t[ej-sj:ej])
-    return i_add(Z, ei-si), i_add(W, ej-sj)
+    Z = i_add(Z, ei-si)
+    W = i_add(W, ej-sj)
+    score = score_indexes(alphabet, scores, s, t, Z, W)
+    return score, Z, W
+
+
+# Heuristic method
+
+
+def compute_index_table(ktup, s):
+    index_table = {}
+    for i in range(len(s) - ktup + 1):
+        sub = s[i:i+ktup]
+        if sub not in index_table:
+            index_table[sub] = [i]
+        else:
+            index_table[sub].append(i)
+    return index_table
+
+
+def score_alignment(alphabet, scores, s, t):
+    return sum(score(s[i], t[i], alphabet, scores) for i in range(len(s)))
+
+
+def find_seeds(alphabet, scores, ktup, index_table, t):
+    MIN = (float('+inf'), float('+inf'))
+    MAX = (float('-inf'), float('-inf'))
+    min_table = {}
+    max_table = {}
+    score_table = defaultdict(int)
+
+    for j in range(len(t) - ktup + 1):
+        sub = t[j:j+ktup]
+        matches = index_table.get(sub, ())
+        for i in matches:
+            d = i - j
+            score_table[d] += score_alignment(alphabet, scores, sub, sub)
+            min_table[d] = min(min_table.get(d, MIN), (i, j))
+            max_table[d] = max(max_table.get(d, MAX), (i, j))
+
+    best_diagonals = sorted(
+        score_table.keys(),
+        key=score_table.__getitem__,
+        reverse=True,
+    )[:10]
+    return [(min_table[d], max_table[d]) for d in best_diagonals]
+
+
+def banded_dp(alphabet, scores, s, t, w):
+    m = len(s)
+    n = len(t)
+    w = min(w, n)
+    V = [[0] * min(n-i+1, w) for i in range(min(m+1, n+1))]
+    M = [[' ']*min(n-i+1, w) for i in range(min(m+1, n+1))]
+    S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+
+    for j in range(1, w):
+        V[0][j], M[0][j] = max(
+            (V[0][j-1] + S(None, t[j-1]), 'L'),
+            (0, 'T'),
+        )
+
+    for i in range(1, min(m+1, n+1)):
+        # V[i][k] holds the entry for V'[i][i+k]
+        # left case: only can use D and U
+        V[i][0], M[i][0] = max(
+            (V[i-1][0] + S(s[i-1], t[i-1]), 'D'),
+            (V[i-1][1] + S(s[i-1], None) if len(V[i-1]) >= 2 else float('-inf'), 'U'),
+            (0, 'T'),
+        )
+        cols = min(n-i+1, w)
+        # middle case
+        for j in range(1, cols):
+            V[i][j], M[i][j] = max(
+                (V[i-1][j-1] + S(s[i-1], t[i+j-1]), 'D'),
+                (V[i][j-1] + S(None, t[i+j-1]), 'L'),
+                (0, 'T'),
+            )
+            # right case: we have no access to the top entry
+            if cols == w and j < w-1:
+                continue
+            # otherwise we can use U
+            V[i][j], M[i][j] = max(
+                (V[i][j], M[i][j]),
+                (V[i-1][j] + S(s[i-1], None), 'U'),
+            )
+
+    i, j = find_max_score(V)
+    bscore = V[i][j]
+    s_idxs = []
+    t_idxs = []
+
+    # Need to translate i and j into the normal indices
+    while i != 0 or j != 0:
+        c = M[i][j]
+        if c == 'D':
+            i -= 1
+            s_idxs.append(i)
+            t_idxs.append(i+j)
+        elif c == 'U':
+            i -= 1
+            j += 1
+            s_idxs.append(i)
+            t_idxs.append(-1)
+        elif c == 'L':
+            j -= 1
+            s_idxs.append(-1)
+            t_idxs.append(i+j)
+        else:  # 'T'
+            break
+
+    s_idxs.reverse()
+    t_idxs.reverse()
+    return bscore, s_idxs, t_idxs
+
+
+def fasta_alt(alphabet, scores, s, t):
+    w = 12
+    ktup = 2
+
+    it = compute_index_table(ktup, s)
+    best = None
+    for (si, sj), (ei, ej) in find_seeds(alphabet, scores, ktup, it, t):
+        curr = banded_dp(alphabet, scores, s[si:ei+ktup], t[sj:ej+ktup], w)
+        if best is None or curr[0] > best[0]:
+            best = (curr[0],
+                    i_add(curr[1], si),
+                    i_add(curr[2], sj))
+    return best
