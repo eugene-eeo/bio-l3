@@ -154,36 +154,35 @@ def global_align(alphabet, scores, X, Y):
 def find_local_max(alphabet, scores, s, t):
     m = len(s) + 1
     n = len(t) + 1
-    V = [[0] * n for _ in range(2)]
+    V = [[(0, (0, 0))] * n for _ in range(2)]
     def S(a, b): return score(a, b, alphabet, scores)  # noqa: E731
-    best_score = float('-inf')
-    best_entry = None
+    best = ((float('-inf'), (0, 0)), (0, 0))
 
     for j in range(1, n):
-        V[0][j] = max(V[0][j-1] + S(None, t[j-1]), 0)
-        if V[0][j] > best_score:
-            best_score = V[0][j]
-            best_entry = (0, j)
+        V[0][j] = max(
+            (V[0][j-1][0] + S(None, t[j-1]), V[0][j-1][1]),
+            (0, (0, j)),
+        )
+        best = max(best, (V[0][j], (0, j)))
 
     for i in range(1, m):
-        V[1][0] = max(V[0][0] + S(s[i-1], None), 0)
-        if V[1][0] > best_score:
-            best_score = V[1][0]
-            best_entry = (i, 0)
+        V[1][0] = max(
+            (V[0][0][0] + S(s[i-1], None), V[0][0][1]),
+            (0, (i, 0)),
+        )
+        best = max(best, (V[1][0], (i, 0)))
 
         for j in range(1, n):
             V[1][j] = max(
-                V[0][j-1] + S(s[i-1], t[j-1]),
-                V[0][j] + S(s[i-1], None),
-                V[1][j-1] + S(None, t[j-1]),
-                0,
+                (V[0][j-1][0] + S(s[i-1], t[j-1]), V[0][j-1][1]),
+                (V[0][j][0] + S(s[i-1], None), V[0][j][1]),
+                (V[1][j-1][0] + S(None, t[j-1]), V[1][j-1][1]),
+                (0, (i, j)),
             )
-            if V[1][j] > best_score:
-                best_score = V[1][j]
-                best_entry = (i, j)
+            best = max(best, (V[1][j], (i, j)))
         for i in range(n):
             V[0][i] = V[1][i]
-    return best_entry
+    return best[0][1], best[1]
 
 
 def score_indexes(alphabet, scores, s, t, Z, W):
@@ -196,15 +195,14 @@ def score_indexes(alphabet, scores, s, t, Z, W):
 
 
 def local_align(alphabet, scores, s, t):
-    ei, ej = find_local_max(alphabet, scores, s, t)
-    si, sj = find_local_max(alphabet, scores, s[:ei][::-1], t[:ej][::-1])
+    (si, sj), (ei, ej) = find_local_max(alphabet, scores, s, t)
     # If one of the substrings is empty, then just
     # give up now.
-    if ei - si == ei or ej - sj == ej:
+    if ei == si or ej == sj:
         return 0, [], []
-    Z, W = global_align(alphabet, scores, s[ei-si:ei], t[ej-sj:ej])
-    Z = i_add(Z, ei-si)
-    W = i_add(W, ej-sj)
+    Z, W = global_align(alphabet, scores, s[si:ei], t[sj:ej])
+    Z = i_add(Z, si)
+    W = i_add(W, sj)
     score = score_indexes(alphabet, scores, s, t, Z, W)
     return score, Z, W
 
