@@ -23,7 +23,7 @@ def basic_align(alphabet, scores, s, t):
     n = len(t) + 1
     V = [[0] * n for _ in range(m)]
     M = [[' ']*n for _ in range(m)]
-    S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+    def S(a, b): return score(a, b, alphabet, scores)  # noqa: E731
 
     for i in range(1, m):
         V[i][0], M[i][0] = max(
@@ -83,7 +83,7 @@ def score_prefix_alignment(alphabet, scores, s, t):
     m = len(s) + 1
     n = len(t) + 1
     V = [[0] * n for _ in range(2)]
-    S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+    def S(a, b): return score(a, b, alphabet, scores)  # noqa: E731
 
     for j in range(1, n):
         V[0][j] = V[0][j-1] + S(None, t[j-1])
@@ -102,7 +102,7 @@ def score_prefix_alignment(alphabet, scores, s, t):
 
 
 def nw_align(alphabet, scores, s, t):
-    S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+    def S(a, b): return score(a, b, alphabet, scores)  # noqa: E731
     b = float('-inf')
     if len(t) == 1 and len(s) > 1:
         W, Z = nw_align(alphabet, scores, t, s)
@@ -155,7 +155,7 @@ def find_local_max(alphabet, scores, s, t):
     m = len(s) + 1
     n = len(t) + 1
     V = [[0] * n for _ in range(2)]
-    S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+    def S(a, b): return score(a, b, alphabet, scores)  # noqa: E731
     best_score = float('-inf')
     best_entry = None
 
@@ -251,66 +251,96 @@ def find_seeds(alphabet, scores, ktup, index_table, t):
     return [(min_table[d], max_table[d]) for d in best_diagonals]
 
 
-def banded_dp(alphabet, scores, s, t, w):
+def banded_dp(alphabet, scores, s, t, k):
     m = len(s)
     n = len(t)
-    w = min(w, n)
-    V = [[0] * min(n-i+1, w) for i in range(min(m+1, n+1))]
-    M = [[' ']*min(n-i+1, w) for i in range(min(m+1, n+1))]
-    S = lambda a, b: score(a, b, alphabet, scores)  # noqa: E731
+    k = min(k, n)
+    w = 2*k + 1
+    if w >= n:
+        return basic_align(alphabet, scores, s, t)
 
-    for j in range(1, w):
-        V[0][j], M[0][j] = max(
-            (V[0][j-1] + S(None, t[j-1]), 'L'),
-            (0, 'T'),
-        )
+    V = [[float('-inf')] * w for i in range(min(m+1, n+1))]
+    M = [[''] * w for i in range(min(m+1, n+1))]
+    L = min(m, n)
 
-    for i in range(1, min(m+1, n+1)):
-        # V[i][k] holds the entry for V'[i][i+k]
-        # left case: only can use D and U
-        V[i][0], M[i][0] = max(
-            (V[i-1][0] + S(s[i-1], t[i-1]), 'D'),
-            (V[i-1][1] + S(s[i-1], None) if len(V[i-1]) >= 2 else float('-inf'), 'U'),
-            (0, 'T'),
-        )
-        cols = min(n-i+1, w)
-        # middle case
-        for j in range(1, cols):
-            V[i][j], M[i][j] = max(
-                (V[i-1][j-1] + S(s[i-1], t[i+j-1]), 'D'),
-                (V[i][j-1] + S(None, t[i+j-1]), 'L'),
-                (0, 'T'),
-            )
-            # right case: we have no access to the top entry
-            if cols == w and j < w-1:
-                continue
-            # otherwise we can use U
-            V[i][j], M[i][j] = max(
-                (V[i][j], M[i][j]),
-                (V[i-1][j] + S(s[i-1], None), 'U'),
-            )
+    def S(a, b): return score(a, b, alphabet, scores)  # noqa: E731
+
+    def get_index(i, j):
+        if not 0 <= j <= n or not 0 <= i <= L:
+            return None
+        t = j - i
+        if not -k <= t <= k:
+            return None
+        center = \
+            i if i <= k else \
+            w-(n-i+1) if i > n - k else \
+            k
+        return i, center + t
+
+    def get(i, j):
+        u = get_index(i, j)
+        if u is None:
+            return float('-inf')
+        a, b = u
+        return V[a][b]
+
+    def set_max(i, j, v, sym):
+        u = get_index(i, j)
+        if u is not None:
+            a, b = u
+            V[a][b], M[a][b] = max((V[a][b], M[a][b]), (v, sym))
+
+    set_max(0, 0, 0, '')
+    for i in range(1, m+1):
+        set_max(i, 0, get(i-1, 0) + S(s[i-1], None), 'L')
+        set_max(i, 0, 0, 'T')
+
+    for j in range(1, k+1):
+        set_max(0, j, get(0, j-1) + S(None, t[j-1]), 'U')
+        set_max(0, j, 0, 'T')
+
+    for i in range(1, m+1):
+        for dj in range(-k, k+1):
+            j = i + dj
+            set_max(i, j, 0, 'T')
+            valid_j = 0 < j <= n
+            if valid_j:
+                set_max(i, j, get(i-1, j-1) + S(s[i-1], t[j-1]), 'D')
+                set_max(i, j, get(i-1, j) + S(s[i-1], None), 'U')
+                set_max(i, j, get(i, j-1) + S(None, t[j-1]), 'L')
+
+    def normalise_j(i, j):
+        if i <= k:
+            return j
+        center = \
+            i if i <= k else \
+            w-(n-i+1) if i > n - k else \
+            k
+        return i + j - center
 
     i, j = find_max_score(V)
     bscore = V[i][j]
     s_idxs = []
     t_idxs = []
 
-    # Need to translate i and j into the normal indices
     while i != 0 or j != 0:
         c = M[i][j]
         if c == 'D':
+            if i <= k or i > n - k:
+                j -= 1
             i -= 1
             s_idxs.append(i)
-            t_idxs.append(i+j)
+            t_idxs.append(normalise_j(i, j))
         elif c == 'U':
+            if i > k and i <= n - k:
+                j -= 1
             i -= 1
-            j += 1
             s_idxs.append(i)
             t_idxs.append(-1)
         elif c == 'L':
             j -= 1
             s_idxs.append(-1)
-            t_idxs.append(i+j)
+            t_idxs.append(normalise_j(i, j))
         else:  # 'T'
             break
 
@@ -325,8 +355,9 @@ def fasta_alt(alphabet, scores, s, t):
 
     it = compute_index_table(ktup, s)
     best = None
-    for (si, sj), (ei, ej) in find_seeds(alphabet, scores, ktup, it, t):
-        curr = banded_dp(alphabet, scores, s[si:ei+ktup], t[sj:ej+ktup], w)
+    seeds = find_seeds(alphabet, scores, ktup, it, t)
+    for (si, sj), _ in seeds:
+        curr = banded_dp(alphabet, scores, s[si:], t[sj:], w)
         if best is None or curr[0] > best[0]:
             best = (curr[0],
                     i_add(curr[1], si),
