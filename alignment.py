@@ -301,10 +301,9 @@ def banded_dp(alphabet, scores, s, t, k):
         for dj in range(-k, k+1):
             j = i + dj
             set_max(i, j, 0, 'T')
-            valid_j = 0 < j <= n
-            if valid_j:
+            set_max(i, j, get(i-1, j) + S(s[i-1], None), 'U')
+            if 0 < j <= n:
                 set_max(i, j, get(i-1, j-1) + S(s[i-1], t[j-1]), 'D')
-                set_max(i, j, get(i-1, j) + S(s[i-1], None), 'U')
                 set_max(i, j, get(i, j-1) + S(None, t[j-1]), 'L')
 
     def normalise_j(i, j):
