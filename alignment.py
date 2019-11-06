@@ -1,3 +1,4 @@
+import numpy as np
 from itertools import chain
 from collections import defaultdict
 
@@ -10,21 +11,10 @@ def make_scoring_dict(alphabet, matrix):
     return M
 
 
-def find_max_score(matrix):
-    max_score = 0
-    entry = (len(matrix) - 1, len(matrix[0]) - 1)
-    for i, row in enumerate(matrix):
-        for j, score in enumerate(row):
-            if score > max_score:
-                max_score = score
-                entry = (i, j)
-    return entry
-
-
 def dynprog(alphabet, scores, s, t):
     m = len(s) + 1
     n = len(t) + 1
-    V = [[0] * n for _ in range(m)]
+    V = np.zeros((m, n), dtype=int)
     M = [[' ']*n for _ in range(m)]
     S = make_scoring_dict(alphabet, scores)
 
@@ -44,15 +34,15 @@ def dynprog(alphabet, scores, s, t):
         for j in range(1, n):
             V[i][j], M[i][j] = max(
                 (V[i-1][j-1] + S[s[i-1], t[j-1]], 'D'),
-                (V[i-1][j] + S[s[i-1], None], 'U'),
                 (V[i][j-1] + S[None, t[j-1]], 'L'),
+                (V[i-1][j] + S[s[i-1], None], 'U'),
                 (0, 'T'),
             )
 
     # reconstruct
     s_idxs = []
     t_idxs = []
-    i, j = find_max_score(V)
+    i, j = np.unravel_index(V.argmax(), V.shape)
     bscore = V[i][j]
 
     while i != 0 or j != 0:
@@ -71,7 +61,6 @@ def dynprog(alphabet, scores, s, t):
 
     s_idxs.reverse()
     t_idxs.reverse()
-
     return bscore, s_idxs, t_idxs
 
 
@@ -81,7 +70,7 @@ def dynprog(alphabet, scores, s, t):
 def score_prefix_alignment(s, t, S):
     m = len(s) + 1
     n = len(t) + 1
-    V = [[0] * n for _ in range(2)]
+    V = np.zeros((2, n))
 
     for j in range(1, n):
         V[0][j] = V[0][j-1] + S[None, t[j-1]]
@@ -94,14 +83,14 @@ def score_prefix_alignment(s, t, S):
                 V[0][j] + S[s[i-1], None],
                 V[1][j-1] + S[None, t[j-1]],
             )
-        V[0], V[1] = V[1], V[0]
+        V[0, :] = V[1, :]
     return V[0]
 
 
 def nw_align(s, t, S):
     if len(t) == 1 and len(s) > 1:
-        W, Z = nw_align(t, s, S)
-        return Z, W
+        score, (W, Z) = nw_align(t, s, S)
+        return score, (Z, W)
     # Try to align ---s--- with t
     b = (float('-inf'), (0, 0))
     for i in range(len(t)):
@@ -111,7 +100,7 @@ def nw_align(s, t, S):
 
 
 def i_add(Z, i):
-    return [(z if z == -1 else z+i) for z in Z]
+    return [z+i for z in Z]
 
 
 def global_align(X, Y, S):
@@ -131,12 +120,8 @@ def global_align(X, Y, S):
         xmid = xlen // 2
         score_l = score_prefix_alignment(X[:xmid], Y, S)
         score_r = score_prefix_alignment(X[xmid:][::-1], Y[::-1], S)[::-1]
-        max_score = float('-inf')
-        ymid = 0
-        for i, (a, b) in enumerate(zip(score_l, score_r)):
-            if a + b > max_score:
-                ymid = i
-                max_score = a + b
+        ymid = (score_l + score_r).argmax()
+
         Z1, W1, s1 = global_align(X[:xmid], Y[:ymid], S)
         Z2, W2, s2 = global_align(X[xmid:], Y[ymid:], S)
         Z = Z1 + i_add(Z2, xmid)
@@ -150,21 +135,22 @@ def find_local_max(alphabet, scores, s, t):
     n = len(t) + 1
     V = [[(0, (0, 0))] * n for _ in range(2)]
     S = make_scoring_dict(alphabet, scores)
-    best = ((float('-inf'), (0, 0)), (0, 0))
+    # (score, start, end)
+    best = (0, (0, 0), (0, 0))
 
     for j in range(1, n):
         V[0][j] = max(
             (V[0][j-1][0] + S[None, t[j-1]], V[0][j-1][1]),
             (0, (0, j)),
         )
-        best = max(best, (V[0][j], (0, j)))
+        best = max(best, (*V[0][j], (0, j)))
 
     for i in range(1, m):
         V[1][0] = max(
             (V[0][0][0] + S[s[i-1], None], V[0][0][1]),
             (0, (i, 0)),
         )
-        best = max(best, (V[1][0], (i, 0)))
+        best = max(best, (*V[1][0], (i, 0)))
 
         for j in range(1, n):
             V[1][j] = max(
@@ -173,10 +159,9 @@ def find_local_max(alphabet, scores, s, t):
                 (V[1][j-1][0] + S[None, t[j-1]],   V[1][j-1][1]),
                 (0, (i, j)),
             )
-            best = max(best, (V[1][j], (i, j)))
-        for i in range(n):
-            V[0][i] = V[1][i]
-    return best[0][1], best[1]
+            best = max(best, (*V[1][j], (i, j)))
+        V[0], V[1] = V[1], V[0]
+    return best[1], best[2]
 
 
 def dynproglin(alphabet, scores, s, t):
@@ -187,9 +172,7 @@ def dynproglin(alphabet, scores, s, t):
         return 0, [], []
     S = make_scoring_dict(alphabet, scores)
     Z, W, score = global_align(s[si:ei], t[sj:ej], S)
-    Z = i_add(Z, si)
-    W = i_add(W, sj)
-    return score, Z, W
+    return score, i_add(Z, si), i_add(W, sj)
 
 
 # Heuristic method
@@ -230,15 +213,15 @@ def find_seeds(alphabet, scores, ktup, index_table, t):
 def banded_dp(alphabet, scores, s, t, k):
     m = len(s)
     n = len(t)
-    k = min(k, n)
     w = 2*k + 1
-    if w >= n:
+    if k >= n or w >= n:
         return dynprog(alphabet, scores, s, t)
 
-    V = [[float('-inf')] * w for i in range(min(m+1, n+1))]
-    M = [[''] * w for i in range(min(m+1, n+1))]
-    L = min(m, n)
     S = make_scoring_dict(alphabet, scores)
+    L = min(m, n)
+    M = [[''] * w for i in range(L+1)]
+    V = np.zeros((L+1, w), dtype=int)
+    V[:] = float('-inf')
 
     def get_index(i, j):
         if not 0 <= j <= n or not 0 <= i <= L:
@@ -254,10 +237,10 @@ def banded_dp(alphabet, scores, s, t, k):
 
     def get(i, j):
         u = get_index(i, j)
-        if u is None:
-            return float('-inf')
-        a, b = u
-        return V[a][b]
+        if u is not None:
+            a, b = u
+            return V[a][b]
+        return float('-inf')
 
     def set_max(i, j, v, sym):
         u = get_index(i, j)
@@ -278,9 +261,9 @@ def banded_dp(alphabet, scores, s, t, k):
         for dj in range(-k, k+1):
             j = i + dj
             set_max(i, j, 0, 'T')
-            set_max(i, j, get(i-1, j) + S[s[i-1], None], 'U')
             if 0 < j <= n:
                 set_max(i, j, get(i-1, j-1) + S[s[i-1], t[j-1]], 'D')
+                set_max(i, j, get(i-1, j) + S[s[i-1], None], 'U')
                 set_max(i, j, get(i, j-1) + S[None, t[j-1]], 'L')
 
     def normalise_j(i, j):
@@ -292,7 +275,7 @@ def banded_dp(alphabet, scores, s, t, k):
             k
         return i + j - center
 
-    i, j = find_max_score(V)
+    i, j = np.unravel_index(V.argmax(), V.shape)
     bscore = V[i][j]
     s_idxs = []
     t_idxs = []
