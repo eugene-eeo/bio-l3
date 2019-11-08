@@ -361,7 +361,7 @@ def best_path(rescored_runs):
         for v, weight in adj_list[u]:
             Q.append((score - weight + v[0], path + [v]))
 
-    return best_path, best_score
+    return best_path
 
 
 def heuralign(alphabet, scores, s, t):
@@ -373,7 +373,7 @@ def heuralign(alphabet, scores, s, t):
     runs = get_diagonal_runs(join_seeds(find_seeds(ktup, it, t)))
     runs = rescore_diagonal_runs(runs, S, s, t)
     runs = nlargest(10, runs, key=itemgetter(0))
-    path, _ = best_path(runs)
+    path = best_path(runs)
 
     _, (si, sj), _ = path[0]
     _, _, (ei, ej) = path[-1]
