@@ -370,7 +370,8 @@ def heuralign(alphabet, scores, s, t):
     S = make_scoring_dict(alphabet, scores)
     it = compute_index_table(ktup, s)
 
-    runs = rescore_diagonal_runs(get_diagonal_runs(join_seeds(find_seeds(2, it, t))), S, s, t)
+    runs = get_diagonal_runs(join_seeds(find_seeds(ktup, it, t)))
+    runs = rescore_diagonal_runs(runs, S, s, t)
     runs = nlargest(10, runs, key=itemgetter(0))
     path, _ = best_path(runs)
 
