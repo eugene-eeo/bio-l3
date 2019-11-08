@@ -1,4 +1,6 @@
 import numpy as np
+from heapq import nlargest
+from operator import itemgetter
 
 
 def make_scoring_dict(alphabet, matrix):
@@ -258,9 +260,126 @@ def compute_index_table(ktup, s):
     return index_table
 
 
-def find_seeds(S, ktup, index_table, t):
+def find_seeds(ktup, index_table, t):
     for j in range(len(t) - ktup + 1):
         sub = t[j:j+ktup]
         if sub in index_table:
             for i in index_table[sub]:
                 yield i, j
+
+
+def join_seeds(seeds):
+    table = {}
+    for i, j in seeds:
+        d = i - j
+        if d not in table:
+            table[d] = {}
+        found = False
+        for start, ((a, b), num) in table[d].items():
+            if i == a + 1 and j == b + 1:
+                table[d][start] = ((i, j), num + 1)
+                found = True
+                break
+        if not found:
+            table[d][i, j] = ((i, j), 1)
+
+    for diag, match in table.items():
+        for start, (end, num) in match.items():
+            yield num, diag, start, end
+
+
+def get_diagonal_runs(hotspots):
+    # Assume we get input from join_seeds, then they are
+    # grouped by i - j.
+    curr_d = None
+    curr_diag = None
+    for num, diag, start, end in hotspots:
+        if curr_d != diag:
+            if curr_diag is not None:
+                yield tuple(curr_diag)
+            curr_diag = [num, start, end]
+            curr_d = diag
+            continue
+        # Try to extend the current diagonal.
+        # If gap penalty is not too big then OK
+        if curr_diag[1] > start:
+            a, b = curr_diag[1]
+            c, d = end
+        else:
+            a, b = curr_diag[2]
+            c, d = start
+        gap_penalty = -(abs(a-c) + abs(b-d))/2
+        if curr_diag[0] + gap_penalty + num >= 0:
+            curr_diag[0] += gap_penalty + num
+            if curr_diag[1] > start:
+                curr_diag[1] = start
+            else:
+                curr_diag[2] = end
+        else:
+            # Otherwise this is a new diagonal
+            yield tuple(curr_diag)
+            curr_diag = [num, start, end]
+    # Don't forget the last one we saw
+    if curr_diag:
+        yield tuple(curr_diag)
+
+
+def rescore_diagonal_runs(runs, S, s, t):
+    # Reevaluate diagonal runs using our scoring matrix
+    for num, start, end in runs:
+        si, sj = start
+        ei, ej = end
+        score = sum(S[s[i], t[j]] for i, j in zip(range(si, ei), range(sj, ej)))
+        yield score, start, end
+
+
+def best_path(rescored_runs):
+    adj_list = {}
+    for run in rescored_runs:
+        adj_list[run] = []
+
+    for u in adj_list:
+        # Connect uv iff u_end[i] <= v_start[i] and u_end[j] <= v_start[j]
+        for v in adj_list:
+            if v is u:
+                continue
+            u_e = u[2]
+            v_s = v[1]
+            if u_e[0] <= v_s[0] and u_e[1] <= v_s[1]:
+                adj_list[u].append((v, v_s[0]-u_e[0] + v_s[1]-u_e[1]))
+
+    # Just DFS over paths is OK, graph is acyclic
+    best_path = []
+    best_score = float('-inf')
+    Q = [(x[0], [x]) for x in adj_list]
+    while Q:
+        score, path = Q.pop()
+        if score > best_score:
+            best_score = score
+            best_path = path
+        u = path[-1]
+        for v, weight in adj_list[u]:
+            Q.append((score - weight + v[0], path + [v]))
+
+    return best_path, best_score
+
+
+def heuralign(alphabet, scores, s, t):
+    k = 20
+    ktup = 2
+    S = make_scoring_dict(alphabet, scores)
+    it = compute_index_table(ktup, s)
+
+    runs = rescore_diagonal_runs(get_diagonal_runs(join_seeds(find_seeds(2, it, t))), S, s, t)
+    runs = nlargest(10, runs, key=itemgetter(0))
+    path, _ = best_path(runs)
+
+    print(path)
+
+    _, (si, sj), _ = path[0]
+    _, _, (ei, ej) = path[-1]
+
+    s, Z, W = banded_dp(S, k, s[si:ei+ktup], t[sj:ej+ktup])
+    Z = [z + si for z in Z]
+    W = [w + sj for w in W]
+    return s, Z, W
