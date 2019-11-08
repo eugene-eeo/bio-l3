@@ -93,6 +93,23 @@ def score_global_alignment(S, s, t):
     return V[0]
 
 
+def nw_align(S, s, t):
+    if len(t) == 1 and len(s) > 1:
+        score, W, Z = nw_align(S, t, s)
+        return score, Z, W
+    # Try to align ---s--- with t
+    score = float('-inf')
+    Z = []
+    W = []
+    for i in range(len(t)):
+        u = S[s, t[i]] + sum(S[None, t[j]] for j in range(len(t)) if j != i)
+        if u > score:
+            score = u
+            Z = [0]
+            W = [i]
+    return score, Z, W
+
+
 def global_align(S, X, Y):
     Z = []
     W = []
@@ -102,7 +119,7 @@ def global_align(S, X, Y):
     elif len(Y) == 0:
         s = sum(S[x, None] for x in X)
     elif len(X) == 1 or len(Y) == 1:
-        return _dynprog(S, X, Y)
+        return nw_align(S, X, Y)
     else:
         xlen = len(X)
         xmid = xlen // 2
@@ -242,4 +259,8 @@ def compute_index_table(ktup, s):
 
 
 def find_seeds(S, ktup, index_table, t):
-    pass
+    for j in range(len(t) - ktup + 1):
+        sub = t[j:j+ktup]
+        if sub in index_table:
+            for i in index_table[sub]:
+                yield i, j
