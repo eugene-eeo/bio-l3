@@ -375,8 +375,6 @@ def heuralign(alphabet, scores, s, t):
     runs = nlargest(10, runs, key=itemgetter(0))
     path, _ = best_path(runs)
 
-    print(path)
-
     _, (si, sj), _ = path[0]
     _, _, (ei, ej) = path[-1]
 
