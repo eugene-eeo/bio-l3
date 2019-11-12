@@ -184,6 +184,39 @@ def dynproglin(alphabet, scores, s, t):
 # Heuristic Method (FASTA-lite)
 
 
+# def banded_dp_fast(S, k, s, t):
+#     m = len(s)
+#     n = len(t)
+#     U = k
+#     L = -k
+#     W = U - L + 1
+
+#     if W > m or W > n:
+#         return _dynprog(S, s, t)[0]
+
+#     HH = np.zeros(W + 2)
+#     EE = np.zeros(W + 2)
+
+#     hi_diag = U - L + 1
+#     lo_diag = 1 - L
+#     lo_row = max(0, -U)
+#     hi_row = min(m, n - L)
+#     score = 0
+
+#     for i in range(lo_row + 1, hi_row + 1):
+#         if lo_diag > 1: lo_diag -= 1
+#         if i > n - U: hi_diag -= 1
+#         f = 0
+#         for j in range(lo_diag, hi_diag + 1):
+#             rj = (j + L - 1 + i) - 1
+#             if rj >= 0:
+#                 f = max(f, HH[j - 1]) + S[s[i-1], None]
+#                 EE[j] = max(EE[j + 1], HH[j + 1]) + S[None, t[rj]]
+#                 HH[j] = max(HH[j] + S[s[i-1], t[rj]], EE[j], f, 0)
+#                 score = max(score, HH[j])
+#     return score
+
+
 def banded_dp(S, k, s, t):
     m = len(s)
     n = len(t)
@@ -362,6 +395,11 @@ def best_path(rescored_runs, avg_gap_cost):
     return best_path
 
 
+# def get_max_diff(path):
+#     diags = [a - b for _, (a, b), _ in path]
+#     return max(abs(a - b) for a in diags for b in diags)
+
+
 def heuralign(alphabet, scores, s, t):
     k = 20
     ktup = 2
@@ -382,6 +420,9 @@ def heuralign(alphabet, scores, s, t):
 
     _, (si, sj), _ = path[0]
     _, _, (ei, ej) = path[-1]
+
+    # k = min(get_max_diff(path), 30)
+    # print(k)
 
     s, Z, W = banded_dp(S, k, s[si:ei+ktup], t[sj:ej+ktup])
     Z = [z + si for z in Z]
