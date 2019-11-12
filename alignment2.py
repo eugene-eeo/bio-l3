@@ -424,7 +424,7 @@ def heuralign(alphabet, scores, s, t):
     # k = min(get_max_diff(path), 30)
     # print(k)
 
-    s, Z, W = banded_dp(S, k, s[si:ei+ktup], t[sj:ej+ktup])
+    score, Z, W = banded_dp(S, k, s[si:ei+ktup], t[sj:ej+ktup])
     Z = [z + si for z in Z]
     W = [w + sj for w in W]
-    return s, Z, W
+    return score, Z, W
