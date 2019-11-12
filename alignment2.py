@@ -205,26 +205,23 @@ def banded_dp(S, k, s, t):
     lo_row = 0
     hi_row = min(m, n - L)
 
-    ld = lo_diag
-    hd = hi_diag
     for i in range(lo_row+1, hi_row+1):
         # lld = max(1, lo_diag - i)
         # hhd = hi_diag if i <= n - U else hi_diag - (i - (n - U))
-        if ld > 1: ld -= 1
-        if i > n - U: hd -= 1
+        if lo_diag > 1: lo_diag -= 1
+        if i > n - U: hi_diag -= 1
 
-        for j in range(ld, hd + 1):
+        for j in range(lo_diag, hi_diag + 1):
             rj = (j + L - 1 + i) - 1
-            if rj < 0:
-                continue
-            F[i, j] = max(F[i, j-1], H[i, j-1] + S[s[i-1], None])
-            E[i, j] = max(E[i-1, j+1], H[i-1, j+1] + S[None, t[rj]])
-            H[i, j], M[i, j] = max(
-                (H[i-1, j] + S[s[i-1], t[rj]], 'D'),
-                (E[i, j], 'L'),
-                (F[i, j], 'U'),
-                (0, 'T'),
-            )
+            if rj >= 0:
+                F[i, j] = max(F[i, j-1], H[i, j-1]) + S[s[i-1], None]
+                E[i, j] = max(E[i-1, j+1], H[i-1, j+1]) + S[None, t[rj]]
+                H[i, j], M[i, j] = max(
+                    (H[i-1, j] + S[s[i-1], t[rj]], 'D'),
+                    (E[i, j], 'L'),
+                    (F[i, j], 'U'),
+                    (0, 'T'),
+                )
 
     i, j = np.unravel_index(H.argmax(), H.shape)
     max_score = H[i, j]
@@ -288,7 +285,16 @@ def join_seeds(seeds):
             yield num, diag, start, end
 
 
-def get_diagonal_runs(hotspots):
+def rescore_runs(runs, S, s, t):
+    # Reevaluate diagonal runs using our scoring matrix
+    for num, diag, start, end in runs:
+        si, sj = start
+        ei, ej = end
+        score = sum(S[s[i], t[j]] for i, j in zip(range(si, ei), range(sj, ej)))
+        yield score, diag, start, end
+
+
+def get_diagonal_runs(hotspots, avg_gap_cost):
     # Assume we get input from join_seeds, then they are
     # grouped by i - j.
     curr_d = None
@@ -308,7 +314,7 @@ def get_diagonal_runs(hotspots):
         else:
             a, b = curr_diag[2]
             c, d = start
-        gap_penalty = -(abs(a-c) + abs(b-d))/2
+        gap_penalty = (abs(a-c) + abs(b-d)) * avg_gap_cost / 2
         if curr_diag[0] + gap_penalty + num >= 0:
             curr_diag[0] += gap_penalty + num
             if curr_diag[1] > start:
@@ -324,16 +330,7 @@ def get_diagonal_runs(hotspots):
         yield tuple(curr_diag)
 
 
-def rescore_diagonal_runs(runs, S, s, t):
-    # Reevaluate diagonal runs using our scoring matrix
-    for num, start, end in runs:
-        si, sj = start
-        ei, ej = end
-        score = sum(S[s[i], t[j]] for i, j in zip(range(si, ei), range(sj, ej)))
-        yield score, start, end
-
-
-def best_path(rescored_runs):
+def best_path(rescored_runs, avg_gap_cost):
     adj_list = {}
     for run in rescored_runs:
         adj_list[run] = []
@@ -346,7 +343,8 @@ def best_path(rescored_runs):
             u_e = u[2]
             v_s = v[1]
             if u_e[0] <= v_s[0] and u_e[1] <= v_s[1]:
-                adj_list[u].append((v, v_s[0]-u_e[0] + v_s[1]-u_e[1]))
+                w = (v_s[0]-u_e[0] + v_s[1]-u_e[1]) * avg_gap_cost
+                adj_list[u].append((v, w))
 
     # Just DFS over paths is OK, graph is acyclic
     best_path = []
@@ -359,7 +357,7 @@ def best_path(rescored_runs):
             best_path = path
         u = path[-1]
         for v, weight in adj_list[u]:
-            Q.append((score - weight + v[0], path + [v]))
+            Q.append((score + weight + v[0], path + [v]))
 
     return best_path
 
@@ -370,10 +368,17 @@ def heuralign(alphabet, scores, s, t):
     S = make_scoring_dict(alphabet, scores)
     it = compute_index_table(ktup, s)
 
-    runs = get_diagonal_runs(join_seeds(find_seeds(ktup, it, t)))
-    runs = rescore_diagonal_runs(runs, S, s, t)
+    avg_gap_cost = sum(S[a, None] for a in alphabet) / len(alphabet)
+    max_cost = max(S.values())
+
+    runs = join_seeds(find_seeds(ktup, it, t))
+    runs = rescore_runs(runs, S, s, t)
+    runs = get_diagonal_runs(runs, avg_gap_cost)
     runs = nlargest(10, runs, key=itemgetter(0))
-    path = best_path(runs)
+    path = best_path(runs, avg_gap_cost / max_cost)
+
+    if not path:
+        return banded_dp(S, k, s, t)
 
     _, (si, sj), _ = path[0]
     _, _, (ei, ej) = path[-1]
