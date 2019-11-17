@@ -461,6 +461,7 @@ def heuralign(alphabet, scores, s, t, ktup=2):
     W = [w + sj for w in W]
 
     for i in range(1, len(path)):
+        # Align gap between previous diagonal and current one
         _, _, (si, sj) = path[i-1]
         _, (ei, ej), _ = path[i]
         ds, dZ, dW = banded_dp(S, k, s[si:ei], t[sj:ej])
@@ -471,6 +472,7 @@ def heuralign(alphabet, scores, s, t, ktup=2):
         Z += dZ
         W += dW
 
+        # Align current diagonal
         _, (si, sj), (ei, ej) = path[i]
         ds, dZ, dW = banded_dp(S, k, s[si:ei], t[sj:ej])
 
