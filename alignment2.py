@@ -132,8 +132,10 @@ def global_align(S, X, Y):
         s1, Z1, W1 = global_align(S, X[:xmid], Y[:ymid])
         s2, Z2, W2 = global_align(S, X[xmid:], Y[ymid:])
 
-        Z = Z1 + [z + xmid for z in Z2]
-        W = W1 + [w + ymid for w in W2]
+        Z1.extend(z + xmid for z in Z2)
+        W1.extend(w + ymid for w in W2)
+        Z = Z1
+        W = W1
         s = s1 + s2
     return s, Z, W
 
@@ -198,122 +200,55 @@ def find_max_score(M):
 def banded_dp_local(S, k, s, t):
     m = len(s)
     n = len(t)
-    U = k
-    L = -k
-    W = U - L + 1
+    M = {}
+    V = {}
+    for i in range(m + 1):
+        for j in range(max(0, i - k), min(i + k + 1, n + 1)):
+            V[i, j] = 0
+            M[i, j] = ''
 
-    if W > m or W > n:
-        return _dynprog(S, s, t)
+    # Fill in vertical values
+    for i in range(1, min(k+1, m+1)):
+        V[i, 0], M[i, 0] = max(
+            (V[i-1, 0] + S[s[i-1], None], 'U'),
+            (0, 'T'),
+        )
 
-    H = np.zeros((m+1, W+2), dtype=np.int32)
-    E = np.zeros((m+1, W+2), dtype=np.int32)
-    F = np.zeros((m+1, W+2), dtype=np.int32)
-    M = np.chararray((m+1, W+2))
-    M[:] = ' '
+    # Fill in horizontal values
+    for j in range(1, min(k+1, n+1)):
+        V[0, j], M[0, j] = max(
+            (V[0, j-1] + S[None, t[j-1]], 'L'),
+            (0, 'T'),
+        )
 
-    lo_diag = 1 - L
-    hi_diag = U - L + 1
-    lo_row = 0
-    hi_row = min(m, n - L)
+    for i in range(1, m+1):
+        for j in range(max(1, i - k), min(i + k + 1, n + 1)):
+            cost_d = V[i-1, j-1] + S[s[i-1], t[j-1]]
+            cost_u = V.get((i-1, j), float('-inf')) + S[s[i-1], None]
+            cost_l = V.get((i, j-1), float('-inf')) + S[None, t[j-1]]
+            V[i, j], M[i, j] = max(
+                (cost_d, 'D'),
+                (cost_u, 'U'),
+                (cost_l, 'L'),
+                (0, 'T'),
+            )
 
-    for i in range(lo_row+1, hi_row+1):
-        # lld = max(1, lo_diag - i)
-        # hhd = hi_diag if i <= n - U else hi_diag - (i - (n - U))
-        if lo_diag > 1: lo_diag -= 1
-        if i > n - U: hi_diag -= 1
-
-        for j in range(lo_diag, hi_diag + 1):
-            rj = (j + L - 1 + i) - 1
-            if rj >= 0:
-                F[i, j] = max(F[i, j-1], H[i, j-1]) + S[s[i-1], None]
-                E[i, j] = max(E[i-1, j+1], H[i-1, j+1]) + S[None, t[rj]]
-                H[i, j], M[i, j] = max(
-                    (H[i-1, j] + S[s[i-1], t[rj]], 'D'),
-                    (E[i, j], 'L'),
-                    (F[i, j], 'U'),
-                    (0, 'T'),
-                )
-
-    i, j = np.unravel_index(H.argmax(), H.shape)
-    max_score = H[i, j]
+    # Reconstruct
+    i, j = max(V, key=V.__getitem__)
+    max_score = V[i, j]
     s_idxs = []
     t_idxs = []
 
-    while i != 0 or j != 0:
+    while True:
         c = M[i, j]
-        if c == b'D':
-            s_idxs.append(i - 1)
-            t_idxs.append(j + L - 1 + i - 1)
+        if c == 'D':
             i -= 1
-        elif c == b'L':
             j -= 1
-        elif c == b'U':
-            i -= 1
-        else:
-            break
-
-    s_idxs.reverse()
-    t_idxs.reverse()
-    return max_score, s_idxs, t_idxs
-
-
-def banded_dp(S, k, s, t):
-    m = len(s)
-    n = len(t)
-    U = k
-    L = -k
-    W = U - L + 1
-
-    if W > m or W > n:
-        return global_align(S, s, t)
-
-    H = np.zeros((m+1, W+2), dtype=np.int32)
-    E = np.zeros((m+1, W+2), dtype=np.int32)
-    F = np.zeros((m+1, W+2), dtype=np.int32)
-    M = np.chararray((m+1, W+2))
-    M[:] = ' '
-
-    lo_diag = 1 - L
-    hi_diag = U - L + 1
-    lo_row = 0
-    hi_row = min(m, n - L)
-
-    for j in range(lo_diag, hi_diag + 2):
-        rj = (j + L - 1 + lo_row) - 1
-        H[lo_row, j] = E[lo_row, j] = S[None, t[rj]]
-
-    for i in range(lo_row+1, hi_row+1):
-        if lo_diag > 1: lo_diag -= 1
-        if i > n - U: hi_diag -= 1
-
-        H[i, lo_diag-1] = F[i, lo_diag-1] = S[s[i-1], None]
-
-        for j in range(lo_diag, hi_diag + 1):
-            rj = (j + L - 1 + i) - 1
-            if rj >= 0:
-                F[i, j] = max(F[i, j-1], H[i, j-1]) + S[s[i-1], None]
-                E[i, j] = max(E[i-1, j+1], H[i-1, j+1]) + S[None, t[rj]]
-                H[i, j], M[i, j] = max(
-                    (H[i-1, j] + S[s[i-1], t[rj]], 'D'),
-                    (E[i, j], 'L'),
-                    (F[i, j], 'U'),
-                )
-
-    i, j = hi_row, hi_diag
-    max_score = H[i, j]
-    s_idxs = []
-    t_idxs = []
-
-    while i != lo_row or j != 1 - L:
-        c = M[i, j]
-        if c == b'D':
-            s_idxs.append(i - 1)
-            t_idxs.append(j + L - 1 + i - 1)
-            i -= 1
-        elif c == b'L':
-            j -= 1
-        elif c == b'U':
-            i -= 1
+            s_idxs.append(i)
+            t_idxs.append(j)
+        elif c == 'U': i -= 1
+        elif c == 'L': j -= 1
+        else: break
 
     s_idxs.reverse()
     t_idxs.reverse()
@@ -439,7 +374,7 @@ def best_path(rescored_runs, avg_gap_cost):
 
 
 def heuralign(alphabet, scores, s, t, ktup=2):
-    k = 5
+    k = 12
     S = make_scoring_dict(alphabet, scores)
     it = compute_index_table(ktup, s)
 
@@ -455,31 +390,15 @@ def heuralign(alphabet, scores, s, t, ktup=2):
     if not path:
         return banded_dp_local(S, k, s, t)
 
-    _, (si, sj), (ei, ej) = path[0]
-    score, Z, W = banded_dp(S, k, s[si:ei], t[sj:ej])
+    max_dist = 0
+    for i, (_, (si, sj), _) in enumerate(path):
+        for j, (_, (ei, ej), _) in enumerate(path):
+            max_dist = max(max_dist, abs((si - sj) - (ei - ej)))
+
+    _, (si, sj), _ = path[0]
+    _, _, (ei, ej) = path[-1]
+
+    score, Z, W = banded_dp_local(S, max_dist, s[si:ei], t[sj:ej])
     Z = [z + si for z in Z]
     W = [w + sj for w in W]
-
-    for i in range(1, len(path)):
-        # Align gap between previous diagonal and current one
-        _, _, (si, sj) = path[i-1]
-        _, (ei, ej), _ = path[i]
-        ds, dZ, dW = banded_dp(S, k, s[si:ei], t[sj:ej])
-
-        dZ = [z + si for z in dZ]
-        dW = [w + sj for w in dW]
-        score += ds
-        Z += dZ
-        W += dW
-
-        # Align current diagonal
-        _, (si, sj), (ei, ej) = path[i]
-        ds, dZ, dW = banded_dp(S, k, s[si:ei], t[sj:ej])
-
-        dZ = [z + si for z in dZ]
-        dW = [w + sj for w in dW]
-        score += ds
-        Z += dZ
-        W += dW
-
     return score, Z, W
