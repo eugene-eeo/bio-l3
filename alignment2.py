@@ -203,7 +203,7 @@ def banded_dp_local(S, k, s, t):
     M = {}
     V = {}
     for i in range(m + 1):
-        for j in range(max(0, i - k), min(i + k + 1, n + 1)):
+        for j in range(max(0, i - k), min(i + k, n) + 1):
             V[i, j] = 0
             M[i, j] = ''
 
@@ -222,7 +222,7 @@ def banded_dp_local(S, k, s, t):
         )
 
     for i in range(1, m+1):
-        for j in range(max(1, i - k), min(i + k + 1, n + 1)):
+        for j in range(max(1, i - k), min(i + k, n) + 1):
             cost_d = V[i-1, j-1] + S[s[i-1], t[j-1]]
             cost_u = V.get((i-1, j), float('-inf')) + S[s[i-1], None]
             cost_l = V.get((i, j-1), float('-inf')) + S[None, t[j-1]]
