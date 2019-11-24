@@ -176,8 +176,6 @@ def find_local_max(S, s, t):
 def dynproglin(alphabet, scores, s, t):
     S = make_scoring_dict(alphabet, scores)
     (si, sj), (ei, ej) = find_local_max(S, s, t)
-    print(si, ei)
-    print(sj, ej)
     # If one of the substrings is empty, then just give up now.
     if ei == si or ej == sj:
         return 0, [], []
