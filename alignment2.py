@@ -13,7 +13,8 @@ def make_scoring_dict(alphabet, matrix):
     return M
 
 
-def _dynprog(S, s, t):
+def dynprog(alphabet, scores, s, t):
+    S = make_scoring_dict(alphabet, scores)
     m = len(s)
     n = len(t)
     V = np.zeros((m+1, n+1), dtype=int)
@@ -65,11 +66,6 @@ def _dynprog(S, s, t):
     s_idxs.reverse()
     t_idxs.reverse()
     return max_score, s_idxs, t_idxs
-
-
-def dynprog(alphabet, scores, s, t):
-    S = make_scoring_dict(alphabet, scores)
-    return _dynprog(S, s, t)
 
 
 # Dynamic programming with O(n) space
@@ -184,17 +180,6 @@ def dynproglin(alphabet, scores, s, t):
 
 
 # Heuristic Method (FASTA-lite)
-
-
-def find_max_score(M):
-    m = float('-inf')
-    entry = (0, 0)
-    for i, rows in enumerate(M):
-        for j, v in enumerate(rows):
-            if v > m:
-                entry = (i, j)
-                m = v
-    return entry, m
 
 
 def banded_dp_local(S, k, s, t):
