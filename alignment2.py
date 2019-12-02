@@ -359,7 +359,7 @@ def best_path(rescored_runs, avg_gap_cost):
 
 
 def heuralign(alphabet, scores, s, t, ktup=2):
-    k = 12
+    k = 15
     S = make_scoring_dict(alphabet, scores)
     it = compute_index_table(ktup, s)
 
@@ -383,7 +383,7 @@ def heuralign(alphabet, scores, s, t, ktup=2):
     _, (si, sj), _ = path[0]
     _, _, (ei, ej) = path[-1]
 
-    score, Z, W = banded_dp_local(S, max_dist, s[si:ei], t[sj:ej])
+    score, Z, W = banded_dp_local(S, min(k, max_dist), s[si:ei], t[sj:ej])
     Z = [z + si for z in Z]
     W = [w + sj for w in W]
     return score, Z, W
