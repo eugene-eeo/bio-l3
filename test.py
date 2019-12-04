@@ -38,19 +38,17 @@ print()
 print("RANDOMISED TESTING")
 print()
 
-
 for x in range(5000):
     m = random.randint(0, 50)
     n = random.randint(0, 50)
     s = "".join(random.choice(alphabet) for _ in range(m))
     t = "".join(random.choice(alphabet) for _ in range(n))
-    print(x, m, n)
-
-    # Just check if it runs
-    score3, _, _ = heuralign(alphabet, scores, s, t)
+    # print(x, m, n)
 
     score1, _, _ = dynprog(alphabet, scores, s, t)
     score2, _, _ = dynproglin(alphabet, scores, s, t)
+    # Just check if it runs
+    score3, _, _ = heuralign(alphabet, scores, s, t)
 
     if score1 != score2 or score3 > score1:
         print(s)
