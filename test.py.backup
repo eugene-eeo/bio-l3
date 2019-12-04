@@ -1,0 +1,112 @@
+import random
+import time
+import os
+import linecache
+# from alignment2 import dynprog, dynproglin, heuralign
+from alignment2 import dynproglin
+import tracemalloc
+
+
+# params = ("ABC", [[1, -1, -2, -1], [-1, 2, -4, -1], [-2, -4, 3, -2], [-1, -1, -2, 0]], "AABBAACA", "CBACCCBA")
+
+# for f in [dynprog, dynproglin, heuralign]:
+#     a = f(*params)
+#     print("Score:  ", a[0])
+#     print("Indices:", a[1], a[2])
+
+
+alphabet, scores = "ABCD", [
+    [1, -5, -5, -5, -1],
+    [-5, 1, -5, -5, -1],
+    [-5, -5, 5, -5, -4],
+    [-5, -5, -5, 6, -4],
+    [-1, -1, -4, -4, -9],
+]
+
+# params2 = [
+#     ("", "AAAAACCDDCCDDAAAAACC"),
+#     ("AAAAACCDDCCDDAAAAACC", ""),
+#     ("AAAAACCDDCCDDAAAAACC", "CCAAADDAAAACCAAADDCCAAAA"),
+#     ("AACAAADAAAACAADAADAAA", "CDCDDD"),
+#     ("DDCDDCCCDCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACCCCDDDCDADCDCDCDCD",
+#      "DDCDDCCCDCBCCCCDDDCDBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBDCDCDCDCD"),
+# ]
+
+# for s, t in params2:
+#     for f in [dynprog, dynproglin, heuralign]:
+#         a = f(alphabet, scores, s, t)
+#         print("Score:  ", a[0])
+#         print("Indices:", a[1], a[2])
+
+
+def display_top(snapshot, key_type='lineno', limit=10):
+    snapshot = snapshot.filter_traces((
+        tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+        tracemalloc.Filter(False, "<unknown>"),
+    ))
+    top_stats = snapshot.statistics(key_type)
+
+    print("Top %s lines" % limit)
+    for index, stat in enumerate(top_stats[:limit], 1):
+        frame = stat.traceback[0]
+        # replace "/path/to/module/file.py" with "module/file.py"
+        filename = os.sep.join(frame.filename.split(os.sep)[-2:])
+        print("#%s: %s:%s: %.1f KiB"
+              % (index, filename, frame.lineno, stat.size / 1024))
+        line = linecache.getline(frame.filename, frame.lineno).strip()
+        if line:
+            print('    %s' % line)
+
+    other = top_stats[limit:]
+    if other:
+        size = sum(stat.size for stat in other)
+        print("%s other: %.1f KiB" % (len(other), size / 1024))
+    total = sum(stat.size for stat in top_stats)
+    print("Total allocated size: %.1f KiB" % (total / 1024))
+
+
+tracemalloc.start(25)
+
+s = "".join(random.choice(alphabet) for _ in range(1000))
+t = "".join(random.choice(alphabet) for _ in range(1000))
+dynproglin(alphabet, scores, s, t)
+
+
+# for x in range(10, 200, 5):
+#     total = 0
+#     for _ in range(100):
+#         s = "".join(random.choice(alphabet) for _ in range(x))
+#         t = "".join(random.choice(alphabet) for _ in range(x))
+#         t0 = time.time()
+#         dynproglin(alphabet, scores, s, t)
+#         t1 = time.time()
+#         total += t1 - t0
+#     print(x, total)
+
+
+snapshot = tracemalloc.take_snapshot()
+display_top(snapshot)
+
+
+# print()
+# print("RANDOMISED TESTING")
+# print()
+
+# for x in range(5000):
+#     m = random.randint(0, 50)
+#     n = random.randint(0, 50)
+#     s = "".join(random.choice(alphabet) for _ in range(m))
+#     t = "".join(random.choice(alphabet) for _ in range(n))
+#     # print(x, m, n)
+
+#     score1, _, _ = dynprog(alphabet, scores, s, t)
+#     score2, _, _ = dynproglin(alphabet, scores, s, t)
+#     # Just check if it runs
+#     score3, _, _ = heuralign(alphabet, scores, s, t)
+
+#     if score1 != score2 or score3 > score1:
+#         print(s)
+#         print(t)
+#         print(score1)
+#         print(score2)
+#         print(score3)

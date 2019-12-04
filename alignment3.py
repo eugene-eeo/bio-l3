@@ -71,66 +71,84 @@ def dynprog(alphabet, scores, s, t):
 # Dynamic programming with O(n) space
 
 
-def score_global_alignment(S, s, t):
-    m = len(s)
-    n = len(t)
+def score_global_alignment(S, s, t, si, ei, sj, ej, rev):
+    m = ei - si  # len(s)
+    n = ej - sj  # len(t)
     V = np.zeros((2, n+1))
 
-    for j in range(1, n+1):
-        V[0, j] = V[0, j-1] + S[None, t[j-1]]
-
-    for i in range(1, m+1):
-        V[1, 0] = V[0, 0] + S[s[i-1], None]
+    if not rev:
+        # Not reversed
         for j in range(1, n+1):
-            V[1, j] = max(
-                V[0, j-1] + S[s[i-1], t[j-1]],
-                V[0, j]   + S[s[i-1], None],
-                V[1, j-1] + S[None, t[j-1]],
-            )
-        V[0, :] = V[1, :]
+            V[0, j] = V[0, j-1] + S[None, t[sj + j-1]]
+
+        for i in range(1, m+1):
+            V[1, 0] = V[0, 0] + S[s[si + i-1], None]
+            for j in range(1, n+1):
+                V[1, j] = max(
+                    V[0, j-1] + S[s[si + i-1], t[sj + j-1]],
+                    V[0, j]   + S[s[si + i-1], None],
+                    V[1, j-1] + S[None, t[sj + j-1]],
+                )
+            V[0, :] = V[1, :]
+    else:
+        # Reversed
+        for j in range(1, n+1):
+            V[0, j] = V[0, j-1] + S[None, t[ej - j]]
+
+        for i in range(1, m+1):
+            V[1, 0] = V[0, 0] + S[s[ei - i], None]
+            for j in range(1, n+1):
+                V[1, j] = max(
+                    V[0, j-1] + S[s[ei - i], t[ej - j]],
+                    V[0, j]   + S[s[ei - i], None],
+                    V[1, j-1] + S[None, t[ej - j]],
+                )
+            V[0, :] = V[1, :]
+
     return V[0]
 
 
-def nw_align(S, s, t):
-    if len(t) == 1 and len(s) > 1:
-        score, W, Z = nw_align(S, t, s)
+def nw_align(S, s, t, si, ei, sj, ej):
+    if ej - sj == 1 and ei - si > 1:
+        score, W, Z = nw_align(S, t, s, sj, ej, si, ei)
         return score, Z, W
     # Try to align ---s--- with t
-    all_score = sum(S[None, y] for y in t)
-    score = S[s, None] + all_score
+    score_all = sum(S[None, t[j]] for j in range(sj, ej))
+    score = S[s[si], None] + score_all
     Z = []
     W = []
-    for j in range(len(t)):
-        u = S[s, t[j]] + all_score - S[None, t[j]]
+    for j in range(sj, ej):
+        u = S[s[si], t[j]] + score_all - S[None, t[j]]
         if u > score:
             score = u
-            Z = [0]
+            Z = [si]
             W = [j]
     return score, Z, W
 
 
-def global_align(S, X, Y):
+def global_align(S, X, Y, si, ei, sj, ej):
     Z = []
     W = []
     s = 0
-    if len(X) == 0:
-        s = sum(S[None, y] for y in Y)
-    elif len(Y) == 0:
-        s = sum(S[x, None] for x in X)
-    elif len(X) == 1 or len(Y) == 1:
-        return nw_align(S, X, Y)
+    if si == ei:
+        # X empty
+        s = sum(S[None, Y[j]] for j in range(sj, ej))
+    elif sj == ej:
+        # Y empty
+        s = sum(S[X[i], None] for i in range(si, ei))
+    elif ei - si == 1 or ej - sj == 1:
+        return nw_align(S, X, Y, si, ei, sj, ej)
     else:
-        xlen = len(X)
-        xmid = xlen // 2
-        L = score_global_alignment(S, X[:xmid], Y)
-        R = score_global_alignment(S, X[xmid:][::-1], Y[::-1])
-        ymid = (L + R[::-1]).argmax()
+        xmid = (si + ei) // 2
+        L = score_global_alignment(S, X, Y, si, xmid, sj, ej, False)
+        R = score_global_alignment(S, X, Y, xmid, ei, sj, ej, True)
+        ymid = sj + (L + R[::-1]).argmax()
 
-        s1, Z1, W1 = global_align(S, X[:xmid], Y[:ymid])
-        s2, Z2, W2 = global_align(S, X[xmid:], Y[ymid:])
+        s1, Z1, W1 = global_align(S, X, Y, si, xmid, sj, ymid)
+        s2, Z2, W2 = global_align(S, X, Y, xmid, ei, ymid, ej)
 
-        Z1.extend(z + xmid for z in Z2)
-        W1.extend(w + ymid for w in W2)
+        Z1.extend(Z2)
+        W1.extend(W2)
         Z = Z1
         W = W1
         s = s1 + s2
@@ -176,8 +194,8 @@ def dynproglin(alphabet, scores, s, t):
     # If one of the substrings is empty, then just give up now.
     if ei == si or ej == sj:
         return 0, [], []
-    s, Z, W = global_align(S, s[si:ei], t[sj:ej])
-    return s, [z + si for z in Z], [w + sj for w in W]
+    s, Z, W = global_align(S, s, t, si, ei, sj, ej)
+    return s, Z, W
 
 
 # Heuristic Method (FASTA-lite)
