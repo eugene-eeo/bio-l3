@@ -1,3 +1,5 @@
+# Submission includes all of the below
+
 import numpy as np
 from collections import defaultdict
 from heapq import nlargest
@@ -262,15 +264,16 @@ def find_hotspot(index, width):
     means = {}
     for diag in index:
         total = 0
-        for neighbour in range(diag - width, diag + width + 1):
-            total += index.get(neighbour, 0)
+        for i, neighbour in zip(range(-width, width + 1), range(diag - width, diag + width + 1)):
+            total += (1 / (1 + abs(i))) * index.get(neighbour, 0)
         means[diag] = total
     return nlargest(5, means, key=means.__getitem__)
 
 
 def heuralign(alphabet, scores, s, t):
-    k = 15
-    ktup = 1
+    # TUNABLE PARAMETERS
+    k = 15    # band width
+    ktup = 2  # ktup
 
     S = make_scoring_dict(alphabet, scores)
     index_table = compute_index_table(ktup, s)
